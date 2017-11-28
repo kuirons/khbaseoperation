@@ -95,8 +95,8 @@ public class HBaseUtil {
             admin.createTable(tableDescriptor, splitKeys);
             logger.info("Table:{}已建立", tableName);
         } finally {
+            //不应该释放连接，而是由上层调用者决定什么时候释放连接，但是管理和表实例应该用完后就释放
             admin.close();
-            closeConnection(connection);
         }
     }
 
@@ -124,7 +124,6 @@ public class HBaseUtil {
             logger.info("Table:{}已建立", tableName);
         } finally {
             admin.close();
-            closeConnection(connection);
         }
     }
 
@@ -181,7 +180,6 @@ public class HBaseUtil {
             logger.info("表:{}删除成功", tableName);
         } finally {
             admin.close();
-            closeConnection(connection);
         }
     }
 
@@ -193,7 +191,8 @@ public class HBaseUtil {
      */
     public static Table getTable(String tableName) {
         try {
-            return getConn().getTable(TableName.valueOf(tableName));
+            Table table=getConn().getTable(TableName.valueOf(tableName));
+            return table;
         } catch (Exception e) {
             logger.error("获取表:{}失败", tableName);
         }
@@ -209,7 +208,11 @@ public class HBaseUtil {
     public static void snapshot(String snapshotName,TableName tableName){
         try {
             Admin admin = getConn().getAdmin();
-            admin.snapshot(snapshotName,tableName);
+            try {
+                admin.snapshot(snapshotName, tableName);
+            }finally {
+                admin.close();
+            }
         } catch (IOException e) {
             logger.error("快照:{}创建失败",snapshotName,e);
         }
@@ -223,14 +226,56 @@ public class HBaseUtil {
     public static List<HBaseProtos.SnapshotDescription> listSnapshots(String snapshotNameRegex){
         try {
             Admin admin = getConn().getAdmin();
-            if(StringUtil.isNotBlank(snapshotNameRegex))
-                return admin.listSnapshots(snapshotNameRegex);
-            else
-                return admin.listSnapshots();
+            try {
+                if (StringUtil.isNotBlank(snapshotNameRegex))
+                    return admin.listSnapshots(snapshotNameRegex);
+                else
+                    return admin.listSnapshots();
+            }finally {
+                admin.close();
+            }
         } catch (IOException e) {
             logger.error("获取快照:{}失败",snapshotNameRegex,e);
         }
         return null;
     }
-    
+
+    /**
+     * 批量删除snapshot
+     * @param snapshotNameRegex
+     */
+    public static void deleteSnapshots(String snapshotNameRegex){
+        try {
+            Admin admin = getConn().getAdmin();
+            try {
+                if (StringUtil.isNotBlank(snapshotNameRegex))
+                    admin.deleteSnapshots(snapshotNameRegex);
+                else
+                    logger.error("snapshotNameRegex不能为空");
+            }finally {
+                admin.close();
+            }
+        } catch (IOException e) {
+            logger.error("批量快照:{}删除失败",snapshotNameRegex,e);
+        }
+    }
+
+    /**
+     * 单个删除快照
+     * @param snapshotName
+     */
+    public static void deleteSnapshot(String snapshotName){
+        try {
+            Admin admin =getConn().getAdmin();
+            try{
+                if(StringUtil.isNotBlank(snapshotName)){
+                    admin.deleteSnapshot(snapshotName);
+                }
+            }finally {
+                admin.close();
+            }
+        } catch (IOException e) {
+            logger.error("删除单个快照:{}失败",snapshotName,e);
+        }
+    }
 }

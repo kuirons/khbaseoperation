@@ -12,8 +12,8 @@ import java.util.List;
 /**
  * Hbase表数据分页模型类
  */
-public class HbasePageModel implements Serializable {
-    private static final Logger logger = LoggerFactory.getLogger(HbasePageModel.class);
+public class HBasePageModel implements Serializable {
+    private static final Logger logger = LoggerFactory.getLogger(HBasePageModel.class);
 
     private static final long serialVersionUID = 330410716100946532L;
     private int pageSize = 100;
@@ -30,7 +30,7 @@ public class HbasePageModel implements Serializable {
     private long endTime = System.currentTimeMillis();
     private List<Result> resultList = new ArrayList<Result>();
 
-    public HbasePageModel(int pageSize) {
+    public HBasePageModel(int pageSize) {
         this.pageSize = pageSize;
     }
 

@@ -1,5 +1,6 @@
 package com.k.hbase;
 
+import com.k.hbase.util.HBasePageModel;
 import jodd.util.StringUtil;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseConfiguration;
@@ -7,6 +8,8 @@ import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.*;
+import org.apache.hadoop.hbase.filter.FilterList;
+import org.apache.hadoop.hbase.filter.PageFilter;
 import org.apache.hadoop.hbase.io.compress.Compression;
 import org.apache.hadoop.hbase.protobuf.generated.HBaseProtos;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -14,7 +17,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
+import java.util.ResourceBundle;
 
 public class HBaseUtil {
     private static final Logger logger = LoggerFactory.getLogger(HBaseUtil.class);
@@ -191,7 +197,7 @@ public class HBaseUtil {
      */
     public static Table getTable(String tableName) {
         try {
-            Table table=getConn().getTable(TableName.valueOf(tableName));
+            Table table = getConn().getTable(TableName.valueOf(tableName));
             return table;
         } catch (Exception e) {
             logger.error("获取表:{}失败", tableName);
@@ -205,25 +211,26 @@ public class HBaseUtil {
      * @param snapshotName
      * @param tableName
      */
-    public static void snapshot(String snapshotName,TableName tableName){
+    public static void snapshot(String snapshotName, TableName tableName) {
         try {
             Admin admin = getConn().getAdmin();
             try {
                 admin.snapshot(snapshotName, tableName);
-            }finally {
+            } finally {
                 admin.close();
             }
         } catch (IOException e) {
-            logger.error("快照:{}创建失败",snapshotName,e);
+            logger.error("快照:{}创建失败", snapshotName, e);
         }
     }
 
     /**
      * 获取已有的快照
+     *
      * @param snapshotNameRegex 过滤快照的正则表达式
      * @return
      */
-    public static List<HBaseProtos.SnapshotDescription> listSnapshots(String snapshotNameRegex){
+    public static List<HBaseProtos.SnapshotDescription> listSnapshots(String snapshotNameRegex) {
         try {
             Admin admin = getConn().getAdmin();
             try {
@@ -231,20 +238,21 @@ public class HBaseUtil {
                     return admin.listSnapshots(snapshotNameRegex);
                 else
                     return admin.listSnapshots();
-            }finally {
+            } finally {
                 admin.close();
             }
         } catch (IOException e) {
-            logger.error("获取快照:{}失败",snapshotNameRegex,e);
+            logger.error("获取快照:{}失败", snapshotNameRegex, e);
         }
         return null;
     }
 
     /**
      * 批量删除snapshot
+     *
      * @param snapshotNameRegex
      */
-    public static void deleteSnapshots(String snapshotNameRegex){
+    public static void deleteSnapshots(String snapshotNameRegex) {
         try {
             Admin admin = getConn().getAdmin();
             try {
@@ -252,30 +260,143 @@ public class HBaseUtil {
                     admin.deleteSnapshots(snapshotNameRegex);
                 else
                     logger.error("snapshotNameRegex不能为空");
-            }finally {
+            } finally {
                 admin.close();
             }
         } catch (IOException e) {
-            logger.error("批量快照:{}删除失败",snapshotNameRegex,e);
+            logger.error("批量快照:{}删除失败", snapshotNameRegex, e);
         }
     }
 
     /**
      * 单个删除快照
+     *
      * @param snapshotName
      */
-    public static void deleteSnapshot(String snapshotName){
+    public static void deleteSnapshot(String snapshotName) {
         try {
-            Admin admin =getConn().getAdmin();
-            try{
-                if(StringUtil.isNotBlank(snapshotName)){
+            Admin admin = getConn().getAdmin();
+            try {
+                if (StringUtil.isNotBlank(snapshotName)) {
                     admin.deleteSnapshot(snapshotName);
                 }
-            }finally {
+            } finally {
                 admin.close();
             }
         } catch (IOException e) {
-            logger.error("删除单个快照:{}失败",snapshotName,e);
+            logger.error("删除单个快照:{}失败", snapshotName, e);
         }
+    }
+
+    public static HBasePageModel scanResultByPageFilter(String tableName, byte[] startRowKey, byte[] endRowKey, FilterList filterList, int maxVersion, HBasePageModel pageModel) {
+        if (pageModel == null) {
+            //默认页大小为15
+            pageModel = new HBasePageModel(10);
+        }
+        if (maxVersion <= 0) {
+            //默认检索数据的最新版本
+            maxVersion = Integer.MIN_VALUE;
+        }
+        pageModel.initStartTime();
+        pageModel.initEndTime();
+        if (StringUtil.isBlank(tableName)) {
+            return pageModel;
+        }
+        Table table = null;
+
+        try {
+            table = getTable(tableName);
+            int tempPageSize = pageModel.getPageSize();
+            boolean isEmptyStartRowKey = false;
+            if (startRowKey == null) {
+                //如果起始行健为空，则从表的第一行数据开始检索，
+                Result firstResult = selectFirstResultRow(tableName, filterList);
+                if (firstResult == null) {
+                    return pageModel;
+                }
+                startRowKey = firstResult.getRow();
+            }
+            if (pageModel.getPageStarRowKey() == null) {
+                isEmptyStartRowKey = true;
+                pageModel.setPageStarRowKey(startRowKey);
+            } else {
+                if (pageModel.getPageEndRowKey() != null) {
+                    pageModel.setPageStarRowKey(pageModel.getPageEndRowKey());
+                }
+                //从第二页开始，每次多去一条记录，因为第一条记录需要被删除
+                tempPageSize += 1;
+            }
+            Scan scan = new Scan();
+            scan.setStartRow(pageModel.getPageStarRowKey());
+            if (endRowKey != null){
+                scan.setStopRow(endRowKey);
+            }
+            PageFilter pageFilter = new PageFilter(pageModel.getPageSize()+1);
+            if(filterList != null){
+                filterList.addFilter(pageFilter);
+                scan.setFilter(filterList);
+            }else {
+                scan.setFilter(pageFilter);
+            }
+            if(maxVersion == Integer.MAX_VALUE){
+                scan.setMaxVersions();
+            }else if(maxVersion == Integer.MIN_VALUE){
+
+            }else {
+                scan.setMaxVersions(maxVersion);
+            }
+            ResultScanner scanner = table.getScanner(scan);
+            List<Result> resultList = new ArrayList<Result>();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+    }
+
+    /**
+     * 检索指定表的第一行记录（如果在创建此表时指定了非默认的命名空间，需要在给定表名的时候指定命名空间，格式为【namespace:tablename】）
+     *
+     * @param tableName
+     * @param filterList
+     * @return
+     */
+    public static Result selectFirstResultRow(String tableName, FilterList filterList) {
+        if (StringUtil.isBlank(tableName)) {
+            return null;
+        }
+        Table table = null;
+        try {
+            table = getTable(tableName);
+            Scan scan = new Scan();
+            if (filterList != null) {
+                scan.setFilter(filterList);
+            }
+            ResultScanner scanner = table.getScanner(scan);
+            Iterator<Result> iterator = scanner.iterator();
+            if (iterator.hasNext()) {
+                Result rs = iterator.next();
+                scanner.close();
+                return rs;
+            } else
+                scanner.close();
+//            这是原代码，如果出问题需要改回
+//            int index = 0;
+//            while(iterator.hasNext()){
+//                Result rs = iterator.next();
+//                if(index == 0){
+//                    scanner.close();
+//                    return rs;
+//                }
+//            }
+        } catch (IOException e) {
+            logger.error("获取表:{}第一行记录失败", tableName, e);
+        } finally {
+            try {
+                table.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        return null;
     }
 }

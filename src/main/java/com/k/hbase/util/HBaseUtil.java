@@ -63,10 +63,9 @@ public class HBaseUtil {
     /**
      * 关闭连接
      *
-     * @param conn 需要关闭的连接
      * @throws IOException
      */
-    public static void closeConnection(Connection conn) {
+    public static void closeConnection() {
         if (null != conn) {
             try {
                 conn.close();
@@ -511,6 +510,26 @@ public class HBaseUtil {
 //            }
 //        }
         return System.currentTimeMillis() - currentTime;
+    }
+
+    public static long sycPuts(String tableName,List<Put> puts){
+        long currentTime = System.currentTimeMillis();
+
+        Table table = getTable(tableName);
+        if (table != null) {
+            try {
+                table.put(puts);
+            } catch (IOException e) {
+                logger.error("同步添加数据:{}失败",e);
+            } finally {
+                try {
+                    table.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        return System.currentTimeMillis()-currentTime;
     }
 
     /**

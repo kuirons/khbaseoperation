@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<configuration debug="false">
+    <!-- OFF,FATAL,ERROR,WARN,INFO,DEBUG -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <Pattern>[%-5p] %d{MM-dd HH:mm:ss} [%thread] [%file:%line] %m%n</Pattern>
+        </encoder>
+    </appender>
+
+    <!--<appender name="hbase" class="ch.qos.logback.core.rolling.RollingFileAppender">-->
+        <!--<file>D:\log\khbaseoperationlog</file>-->
+        <!--<rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">-->
+            <!--<fileNamePattern>D:\log\khbaseoperationlog\hbase%d{yyyyMMdd}</fileNamePattern>-->
+            <!--<maxHistory>7</maxHistory>-->
+        <!--</rollingPolicy>-->
+        <!--<encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">-->
+            <!--<pattern>[%-5p] %d{MM-dd HH:mm:ss} [%thread] [%file:%line] %msg%n</pattern>-->
+        <!--</encoder>-->
+    <!--</appender>-->
+</configuration>

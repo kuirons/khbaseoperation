@@ -1,6 +1,5 @@
-package com.k.hbase;
+package com.k.hbase.util;
 
-import com.k.hbase.util.HBasePageModel;
 import jodd.util.StringUtil;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseConfiguration;
@@ -561,6 +560,7 @@ public class HBaseUtil {
 
     /**
      * 后去单条数据
+     *
      * @param tableName
      * @param row
      * @return
@@ -568,13 +568,13 @@ public class HBaseUtil {
     public static Result getRow(String tableName, byte[] row) {
         Table table = getTable(tableName);
         Result rs = null;
-        if(table!=null){
-            try{
+        if (table != null) {
+            try {
                 Get get = new Get(row);
                 rs = table.get(get);
             } catch (IOException e) {
-                logger.error("获取数据失败",e);
-            }finally {
+                logger.error("获取数据失败", e);
+            } finally {
                 try {
                     table.close();
                 } catch (IOException e) {
@@ -587,33 +587,34 @@ public class HBaseUtil {
 
     /**
      * 获取多行数据
+     *
      * @param tableName
      * @param rows
      * @param <T>
      * @return
      */
-    public static <T> Result[] getRows(String tableName,List<T> rows){
+    public static <T> Result[] getRows(String tableName, List<T> rows) {
         Table table = getTable(tableName);
         List<Get> gets = null;
         Result[] results = null;
-        try{
-            if(table!=null){
+        try {
+            if (table != null) {
                 gets = new ArrayList<Get>();
                 for (T row :
                         rows) {
-                    if (row != null){
+                    if (row != null) {
                         gets.add(new Get(Bytes.toBytes(String.valueOf(row))));
-                    }else{
+                    } else {
                         throw new RuntimeException("表中没有数据");
                     }
                 }
             }
-            if(gets.size() > 0){
+            if (gets.size() > 0) {
                 results = table.get(gets);
             }
-        }catch (IOException e){
-            logger.error("获取数据失败",e);
-        }finally {
+        } catch (IOException e) {
+            logger.error("获取数据失败", e);
+        } finally {
             try {
                 table.close();
             } catch (IOException e) {
@@ -625,21 +626,22 @@ public class HBaseUtil {
 
     /**
      * 扫描整张表，返回一个结果迭代器，使用完一定要释放，不然资源会爆炸
+     *
      * @param tableName
      * @return
      */
-    public static ResultScanner get(String tableName){
+    public static ResultScanner get(String tableName) {
         Table table = getTable(tableName);
         ResultScanner results = null;
-        if(table != null){
-            try{
+        if (table != null) {
+            try {
                 Scan scan = new Scan();
                 scan.setCaching(1000);
                 results = table.getScanner(scan);
             } catch (IOException e) {
-                logger.error("获取扫描器失败",e);
-            }finally {
-                try{
+                logger.error("获取扫描器失败", e);
+            } finally {
+                try {
                     table.close();
                 } catch (IOException e) {
                     e.printStackTrace();
@@ -651,10 +653,11 @@ public class HBaseUtil {
 
     /**
      * byte[] 类型的长整型数字转换为long类型
+     *
      * @param byteNum
      * @return
      */
-    public static long bytesToLong(byte[] byteNum){
+    public static long bytesToLong(byte[] byteNum) {
         long num = 0;
         for (int ix = 0; ix < 8; ++ix) {
             num <<= 8;

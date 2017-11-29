@@ -18,9 +18,9 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
-import java.util.ResourceBundle;
 
 public class HBaseUtil {
     private static final Logger logger = LoggerFactory.getLogger(HBaseUtil.class);
@@ -288,10 +288,21 @@ public class HBaseUtil {
         }
     }
 
+    /**
+     * 分页检索数据
+     *
+     * @param tableName   表名
+     * @param startRowKey 起始行健（可以为空，如果为空，则从表中第一行开始检索）
+     * @param endRowKey   结束行健（可以为空）
+     * @param filterList  检索条件过滤集合，不包括分页过滤器，分页过滤器在函数中添加
+     * @param maxVersion  最大版本数，如果为最大整数值，则检索所有版本，如果为最小整数值，则检索最小版本，否则只检索指定的版本数
+     * @param pageModel   分页模型
+     * @return
+     */
     public static HBasePageModel scanResultByPageFilter(String tableName, byte[] startRowKey, byte[] endRowKey, FilterList filterList, int maxVersion, HBasePageModel pageModel) {
         if (pageModel == null) {
             //默认页大小为15
-            pageModel = new HBasePageModel(10);
+            pageModel = new HBasePageModel(15);
         }
         if (maxVersion <= 0) {
             //默认检索数据的最新版本
@@ -306,7 +317,7 @@ public class HBaseUtil {
 
         try {
             table = getTable(tableName);
-            int tempPageSize = pageModel.getPageSize();
+//            int tempPageSize = pageModel.getPageSize();
             boolean isEmptyStartRowKey = false;
             if (startRowKey == null) {
                 //如果起始行健为空，则从表的第一行数据开始检索，
@@ -324,32 +335,53 @@ public class HBaseUtil {
                     pageModel.setPageStarRowKey(pageModel.getPageEndRowKey());
                 }
                 //从第二页开始，每次多去一条记录，因为第一条记录需要被删除
-                tempPageSize += 1;
+//                tempPageSize += 1;
             }
             Scan scan = new Scan();
             scan.setStartRow(pageModel.getPageStarRowKey());
-            if (endRowKey != null){
+            if (endRowKey != null) {
                 scan.setStopRow(endRowKey);
             }
-            PageFilter pageFilter = new PageFilter(pageModel.getPageSize()+1);
-            if(filterList != null){
+            PageFilter pageFilter = new PageFilter(pageModel.getPageSize() + 1);
+            if (filterList != null) {
                 filterList.addFilter(pageFilter);
                 scan.setFilter(filterList);
-            }else {
+            } else {
                 scan.setFilter(pageFilter);
             }
-            if(maxVersion == Integer.MAX_VALUE){
+            if (maxVersion == Integer.MAX_VALUE) {
                 scan.setMaxVersions();
-            }else if(maxVersion == Integer.MIN_VALUE){
+            } else if (maxVersion == Integer.MIN_VALUE) {
 
-            }else {
+            } else {
                 scan.setMaxVersions(maxVersion);
             }
             ResultScanner scanner = table.getScanner(scan);
             List<Result> resultList = new ArrayList<Result>();
         } catch (IOException e) {
             e.printStackTrace();
+        } finally {
+            try {
+                table.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
+
+        int pageIndex = pageModel.getPageIndex() + 1;
+        pageModel.setPageIndex(pageIndex);
+        if (pageModel.getResultList().size() > 0) {
+            //获取本次分页数据首行和末行的行健信息
+            byte[] pageStartRowKey = pageModel.getResultList().get(0).getRow();
+            byte[] pageEndRowKey = pageModel.getResultList().get(pageModel.getResultList().size() - 1).getRow();
+            pageModel.setPageStarRowKey(pageStartRowKey);
+            pageModel.setPageEndRowKey(pageEndRowKey);
+        }
+        int queryTotalCount = pageModel.getQueryTotalCount() + pageModel.getResultList().size();
+        pageModel.setQueryTotalCount(queryTotalCount);
+        pageModel.initEndTime();
+        pageModel.printTimeInfo();
+        return pageModel;
 
     }
 
@@ -398,5 +430,236 @@ public class HBaseUtil {
             }
         }
         return null;
+    }
+
+    /**
+     * 异步往指定表中添加数据
+     *
+     * @param tableName
+     * @param puts      需要添加的数据
+     * @return 返回执行的时间
+     * @throws Exception
+     */
+    public static long asynPut(String tableName, List<Put> puts) throws Exception {
+        long currentTime = System.currentTimeMillis();
+        Connection connection = getConn();
+        final BufferedMutator.ExceptionListener listener = new BufferedMutator.ExceptionListener() {
+            public void onException(RetriesExhaustedWithDetailsException e, BufferedMutator bufferedMutator) throws RetriesExhaustedWithDetailsException {
+                for (int i = 0; i < e.getNumExceptions(); i++) {
+                    logger.error("异步添加数据:{}失败", e.getRow(i));
+                }
+            }
+        };
+        BufferedMutatorParams params = new BufferedMutatorParams(TableName.valueOf(tableName)).listener(listener);
+        params.writeBufferSize(5 * 1024 * 1024);
+
+        final BufferedMutator mutator = connection.getBufferedMutator(params);
+        try {
+            mutator.mutate(puts);
+            mutator.flush();
+        } finally {
+            mutator.close();
+        }
+        return System.currentTimeMillis() - currentTime;
+    }
+
+    /**
+     * 表异步添加数据
+     *
+     * @param tableName
+     * @param put
+     * @return
+     * @throws Exception
+     */
+    public static long asynput(String tableName, Put put) throws Exception {
+        return asynPut(tableName, Arrays.asList(put));
+    }
+
+    /**
+     * 同步添加数据
+     *
+     * @param tableName
+     * @param put
+     * @return
+     */
+    public static long sycPut(String tableName, Put put) {
+        long currentTime = System.currentTimeMillis();
+
+        Table table = getTable(tableName);
+        if (table != null) {
+            try {
+                table.put(put);
+            } catch (IOException e) {
+                logger.error("同步添加数据:{}失败", put.getRow(), e);
+            } finally {
+                try {
+                    table.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+//        try {
+//            table = connection.getTable(TableName.valueOf(tableName));
+//            table.put(put);
+//        } catch (IOException e) {
+//            logger.error("同步添加数据:{}失败",put.getRow(),e);
+//        }finally {
+//            try {
+//                table.close();
+//            } catch (IOException e) {
+//                e.printStackTrace();
+//            }
+//        }
+        return System.currentTimeMillis() - currentTime;
+    }
+
+    /**
+     * 删除单条数据
+     *
+     * @param tableName
+     * @param row
+     * @throws IOException
+     */
+    public static void delete(String tableName, String row) throws IOException {
+        Table table = getTable(tableName);
+        if (table != null) {
+            try {
+                Delete d = new Delete(row.getBytes());
+                table.delete(d);
+            } finally {
+                table.close();
+            }
+        }
+    }
+
+    /**
+     * 删除多条数据
+     *
+     * @param tableName
+     * @param rows
+     * @throws IOException
+     */
+    public static void delete(String tableName, String[] rows) throws IOException {
+        Table table = getTable(tableName);
+        if (table != null) {
+            try {
+                List<Delete> list = new ArrayList<Delete>();
+                for (String row :
+                        rows) {
+                    Delete d = new Delete(row.getBytes());
+                    list.add(d);
+                }
+                if (list.size() > 0) {
+                    table.delete(list);
+                }
+            } finally {
+                table.close();
+            }
+        }
+    }
+
+    /**
+     * 后去单条数据
+     * @param tableName
+     * @param row
+     * @return
+     */
+    public static Result getRow(String tableName, byte[] row) {
+        Table table = getTable(tableName);
+        Result rs = null;
+        if(table!=null){
+            try{
+                Get get = new Get(row);
+                rs = table.get(get);
+            } catch (IOException e) {
+                logger.error("获取数据失败",e);
+            }finally {
+                try {
+                    table.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        return rs;
+    }
+
+    /**
+     * 获取多行数据
+     * @param tableName
+     * @param rows
+     * @param <T>
+     * @return
+     */
+    public static <T> Result[] getRows(String tableName,List<T> rows){
+        Table table = getTable(tableName);
+        List<Get> gets = null;
+        Result[] results = null;
+        try{
+            if(table!=null){
+                gets = new ArrayList<Get>();
+                for (T row :
+                        rows) {
+                    if (row != null){
+                        gets.add(new Get(Bytes.toBytes(String.valueOf(row))));
+                    }else{
+                        throw new RuntimeException("表中没有数据");
+                    }
+                }
+            }
+            if(gets.size() > 0){
+                results = table.get(gets);
+            }
+        }catch (IOException e){
+            logger.error("获取数据失败",e);
+        }finally {
+            try {
+                table.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        return results;
+    }
+
+    /**
+     * 扫描整张表，返回一个结果迭代器，使用完一定要释放，不然资源会爆炸
+     * @param tableName
+     * @return
+     */
+    public static ResultScanner get(String tableName){
+        Table table = getTable(tableName);
+        ResultScanner results = null;
+        if(table != null){
+            try{
+                Scan scan = new Scan();
+                scan.setCaching(1000);
+                results = table.getScanner(scan);
+            } catch (IOException e) {
+                logger.error("获取扫描器失败",e);
+            }finally {
+                try{
+                    table.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        return results;
+    }
+
+    /**
+     * byte[] 类型的长整型数字转换为long类型
+     * @param byteNum
+     * @return
+     */
+    public static long bytesToLong(byte[] byteNum){
+        long num = 0;
+        for (int ix = 0; ix < 8; ++ix) {
+            num <<= 8;
+            num |= (byteNum[ix] & 0xff);
+        }
+        return num;
     }
 }

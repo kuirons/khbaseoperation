@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
@@ -68,21 +69,31 @@ public class HBaseServiceImpl extends AbstractHBaseService{
      * @param waiting  是否等待线程执行完成  true 可以及时看到结果, false 让线程继续执行，并跳出此方法返回调用方主程序
      */
     public void batchAsyncPut(final String tableName, final List<Put> puts, boolean waiting) {
-        Future f = threadPool.submit(new Runnable() {
+        Future f = threadPool.submit(new Callable() {
             @Override
-            public void run() {
+            public Object call() throws Exception {
                 try {
-                    HBaseUtil.asynPut(tableName, puts);
+                    long result = HBaseUtil.asynPut(tableName, puts);
+                    return result;
                 } catch (Exception e) {
                     logger.error("batchPut failed . ", e);
-                    return;
                 }
+                return 0L;
             }
+//            @Override
+//            public long call() {
+//                try {
+//                    return HBaseUtil.asynPut(tableName, puts);
+//                } catch (Exception e) {
+//                    logger.error("batchPut failed . ", e);
+//                }
+//                return 0L;
+//            }
         });
 
         if(waiting){
             try {
-                f.get();
+                System.out.println(f.get());
             } catch (InterruptedException e) {
                 logger.error("多线程异步提交返回数据执行失败.", e);
             } catch (ExecutionException e) {
@@ -102,4 +113,10 @@ public class HBaseServiceImpl extends AbstractHBaseService{
         HBaseUtil.createTable(tableName, columnFamilies, preBuildRegion);
     }
 
+    /**
+     * 关闭线程池
+     */
+    public void shutdownThreadPool(){
+        threadPool.shutdown();
+    }
 }

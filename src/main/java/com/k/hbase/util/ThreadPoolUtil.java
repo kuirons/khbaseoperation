@@ -64,7 +64,7 @@ public class ThreadPoolUtil {
         //实现线程池
         executor=new ThreadPoolExecutor(corePoolSize,maximumPoolSize, keepAliveTime, unit,
                 workQueue);
-        System.out.println("线程池初始化成功");
+        logger.info("线程池初始化成功");
     }
 
     /**
@@ -106,6 +106,7 @@ public class ThreadPoolUtil {
      * 销毁线程池
      * */
     public void shutdown(){
+        logger.info("关闭线程池");
         getExecutor().shutdown();
     }
 

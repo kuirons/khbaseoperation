@@ -7,6 +7,7 @@ import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.*;
+import org.apache.hadoop.hbase.filter.Filter;
 import org.apache.hadoop.hbase.filter.FilterList;
 import org.apache.hadoop.hbase.filter.PageFilter;
 import org.apache.hadoop.hbase.io.compress.Compression;
@@ -15,11 +16,9 @@ import org.apache.hadoop.hbase.util.Bytes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.ws.rs.core.Response;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 
 public class HBaseUtil {
     private static final Logger logger = LoggerFactory.getLogger(HBaseUtil.class);
@@ -340,6 +339,7 @@ public class HBaseUtil {
             if (endRowKey != null) {
                 scan.setStopRow(endRowKey);
             }
+            //[startRow,endRow),所以要+1
             PageFilter pageFilter = new PageFilter(pageModel.getPageSize() + 1);
             if (filterList != null) {
                 filterList.addFilter(pageFilter);
@@ -512,7 +512,14 @@ public class HBaseUtil {
         return System.currentTimeMillis() - currentTime;
     }
 
-    public static long sycPuts(String tableName,List<Put> puts){
+    /**
+     * 同步添加多行数据
+     *
+     * @param tableName
+     * @param puts
+     * @return
+     */
+    public static long sycPuts(String tableName, List<Put> puts) {
         long currentTime = System.currentTimeMillis();
 
         Table table = getTable(tableName);
@@ -520,7 +527,7 @@ public class HBaseUtil {
             try {
                 table.put(puts);
             } catch (IOException e) {
-                logger.error("同步添加数据:{}失败",e);
+                logger.error("同步添加数据:{}失败", e);
             } finally {
                 try {
                     table.close();
@@ -529,7 +536,7 @@ public class HBaseUtil {
                 }
             }
         }
-        return System.currentTimeMillis()-currentTime;
+        return System.currentTimeMillis() - currentTime;
     }
 
     /**
@@ -578,7 +585,7 @@ public class HBaseUtil {
     }
 
     /**
-     * 后去单条数据
+     * 获取单条数据
      *
      * @param tableName
      * @param row
@@ -647,16 +654,16 @@ public class HBaseUtil {
      * 扫描整张表，返回一个结果迭代器，使用完一定要释放，不然资源会爆炸
      *
      * @param tableName
+     * @param paramHashMap 可选参数列表,key是参数类型，可选的有column、timeRange、timestamp、version、startRow、stopRow、Families，值是一个list，如果值有多个参数，每个参数以“-”分割
+     * @param filters      可选的过滤器参数
      * @return
      */
-    public static ResultScanner get(String tableName) {
+    public static ResultScanner getScan(String tableName, HashMap<String, List<String>> paramHashMap, Filter... filters) {
         Table table = getTable(tableName);
         ResultScanner results = null;
         if (table != null) {
             try {
-                Scan scan = new Scan();
-                scan.setCaching(1000);
-                results = table.getScanner(scan);
+                results = table.getScanner(setScanParam(paramHashMap, filters));
             } catch (IOException e) {
                 logger.error("获取扫描器失败", e);
             } finally {
@@ -668,6 +675,61 @@ public class HBaseUtil {
             }
         }
         return results;
+    }
+
+    /**
+     * 为ResultScanner服务
+     *
+     * @param paramHashMap
+     * @param filters
+     * @return
+     */
+    private static Scan setScanParam(HashMap<String, List<String>> paramHashMap, Filter[] filters) {
+        Scan scan = new Scan();
+        scan.setCaching(1000);
+        if (filters.length != 0) {
+            for (Filter f :
+                    filters) {
+                scan.setFilter(f);
+            }
+        }
+        if (paramHashMap.containsKey("column")) {
+            for (String s :
+                    paramHashMap.get("column")) {
+                scan.addColumn(s.split("-")[0].getBytes(), s.split("-")[1].getBytes());
+            }
+        }
+        if (paramHashMap.containsKey("timeRange")) {
+            String timeRange = paramHashMap.get("timeRange").get(0);
+            try {
+                scan.setTimeRange(Long.parseLong(timeRange.split("-")[0]), Long.parseLong(timeRange.split("-")[1]));
+            } catch (IOException e) {
+                logger.error("设置扫描器时间区间失败", e);
+            }
+        }
+        if (paramHashMap.containsKey("timestamp")) {
+            try {
+                scan.setTimeStamp(Long.parseLong(paramHashMap.get("timestamp").get(0)));
+            } catch (IOException e) {
+                logger.error("设置扫描器查询时间失败", e);
+            }
+        }
+        if (paramHashMap.containsKey("version")) {
+            scan.setMaxVersions(Integer.parseInt(paramHashMap.get("version").get(0)));
+        }
+        if (paramHashMap.containsKey("startRow")) {
+            scan.setStartRow(paramHashMap.get("startRow").get(0).getBytes());
+        }
+        if (paramHashMap.containsKey("stopRow")) {
+            scan.setStopRow(paramHashMap.get("stopRow").get(0).getBytes());
+        }
+        if (paramHashMap.containsKey("Families")) {
+            for (String s :
+                    paramHashMap.get("Families")) {
+                scan.addFamily(s.getBytes());
+            }
+        }
+        return scan;
     }
 
     /**

@@ -8,8 +8,12 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
 import org.apache.commons.codec.binary.Base64;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class AESUtil {
+
+    private static final Logger logger = LoggerFactory.getLogger(AESUtil.class);
 
     // AES密码器
     private static Cipher cipher;
@@ -27,29 +31,18 @@ public class AESUtil {
     private static final Integer PRIVATE_KEY_SIZE_BIT = 128;
     private static final Integer PRIVATE_KEY_SIZE_BYTE = 16;
 
-
-    public static void main(String[] args) {
-        String secretKey = "popcorn156348568";
-        String text = "测试";
-//        String miwen = encrypt(secretKey, text);
-//        System.out.println("密文为：" + miwen);
-        String mingwen = decrypt(secretKey, "vFUTQsfUm/1w6XIAgTgg/w==");
-        System.out.println("明文为：" + mingwen);
-    }
-
     /**
      * 加密
      *
-     * @param secretKey
-     *            密钥：加密的规则 16位
-     * @param plainText
-     *            明文：要加密的内容
+     * @param secretKey 密钥：加密的规则 16位
+     * @param plainText 明文：要加密的内容
      * @return cipherText
-     *               密文：加密后的内容，如有异常返回空串：""
+     * 密文：加密后的内容，如有异常返回空串：""
      */
     public static String encrypt(String secretKey, String plainText) {
         if (secretKey.length() != PRIVATE_KEY_SIZE_BYTE) {
-            throw new RuntimeException("AESUtil:Invalid AES secretKey length (must be 16 bytes)");
+            logger.error("密匙长度错误，请提供128位密匙");
+            throw new RuntimeException("密匙长度错误，请提供128位密匙");
         }
 
         // 密文字符串
@@ -63,7 +56,7 @@ public class AESUtil {
             byte[] byteCipherText = cipher.doFinal(bytePlainText);
             cipherText = Base64.encodeBase64String(byteCipherText);
         } catch (Exception e) {
-            throw new RuntimeException("AESUtil:encrypt fail!", e);
+            logger.error("加密失败", e);
         }
         return cipherText;
     }
@@ -71,12 +64,10 @@ public class AESUtil {
     /**
      * 解密
      *
-     * @param secretKey
-     *            密钥：加密的规则 16位
-     * @param cipherText
-     *            密文：加密后的内容，即需要解密的内容
+     * @param secretKey  密钥：加密的规则 16位
+     * @param cipherText 密文：加密后的内容，即需要解密的内容
      * @return plainText
-     *                明文：解密后的内容即加密前的内容，如有异常返回空串：""
+     * 明文：解密后的内容即加密前的内容，如有异常返回空串：""
      */
     public static String decrypt(String secretKey, String cipherText) {
         if (secretKey.length() != PRIVATE_KEY_SIZE_BYTE) {
@@ -93,17 +84,16 @@ public class AESUtil {
             byte[] bytePlainText = cipher.doFinal(byteCipherText);
             plainText = new String(bytePlainText, KEY_CHARSET);
         } catch (Exception e) {
-            throw new RuntimeException("AESUtil:decrypt fail!", e);
+            logger.error("解密失败", e);
         }
         return plainText;
     }
 
     /**
      * 初始化参数
-     * @param secretKey
-     *              密钥：加密的规则 16位
-     * @param mode
-     *              加密模式：加密or解密
+     *
+     * @param secretKey 密钥：加密的规则 16位
+     * @param mode      加密模式：加密or解密
      */
     public static void initParam(String secretKey, int mode) {
         try {
@@ -125,7 +115,7 @@ public class AESUtil {
             System.out.println("iv:" + new String(iv.getIV()));
             cipher.init(mode, key, iv);
         } catch (Exception e) {
-            throw new RuntimeException("AESUtil:initParam fail!", e);
+            logger.error("AES初始化参数失败", e);
         }
     }
 }
